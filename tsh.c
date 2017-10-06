@@ -293,6 +293,7 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {
+    
     return;
 }
 
@@ -327,15 +328,22 @@ void sigchld_handler(int sig)
     pid_t pid;
     while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) != 0) /* Reap a zombie child */
     {
-        if(WIFEXITED(status)) {
-            deletejob(jobs, pid); /* Delete the child from the job list */
+        if(WIFEXITED(status)) { /* If exited normally */
+            deletejob(jobs, pid);
             return;
         }
-        if(WIFSIGNALED(status))
+        if(WIFSIGNALED(status)) /* If terminated b/c sent SIGINT */
         {
             int jid = pid2jid(pid);
             printf("Job [%d] (%d) terminated by signal 2\n", jid, pid);
             deletejob(jobs, pid);
+            return;
+        }
+        if(WIFSTOPPED(status))
+        {
+            struct job_t* job = getjobpid(jobs, pid);
+            job->state = ST;
+            printf("Job [%d] (%d) stopped by signal 18\n", job->jid, pid);
             return;
         }
     }
@@ -365,7 +373,8 @@ void sigint_handler(int sig)
 /* Same code as sigint */
 void sigtstp_handler(int sig) 
 {
-    return;
+    pid_t pgid = fgpid(jobs);
+    kill(-pgid,SIGTSTP);
 }
 
 /*********************
