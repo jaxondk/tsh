@@ -130,23 +130,22 @@ int main(int argc, char **argv)
 
     /* Execute the shell's read/eval loop */
     while (1) {
+        /* Read command line */
+        if (emit_prompt) {
+            printf("%s", prompt);
+            fflush(stdout);
+        }
+        if ((fgets(cmdline, MAXLINE, stdin) == NULL) && ferror(stdin))
+            app_error("fgets error");
+        if (feof(stdin)) { /* End of file (ctrl-d) */
+            fflush(stdout);
+            exit(0);
+        }
 
-	/* Read command line */
-	if (emit_prompt) {
-	    printf("%s", prompt);
-	    fflush(stdout);
-	}
-	if ((fgets(cmdline, MAXLINE, stdin) == NULL) && ferror(stdin))
-	    app_error("fgets error");
-	if (feof(stdin)) { /* End of file (ctrl-d) */
-	    fflush(stdout);
-	    exit(0);
-	}
-
-	/* Evaluate the command line */
-	eval(cmdline);
-	fflush(stdout);
-	fflush(stdout);
+        /* Evaluate the command line */
+        eval(cmdline);
+        fflush(stdout);
+        fflush(stdout);
     } 
 
     exit(0); /* control never reaches here */
@@ -171,14 +170,21 @@ void eval(char *cmdline)
     char buf[MAXLINE]; /* Holds modified command line */ 
     int bg; /* Should the job run in bg or fg? */
     pid_t pid; /* Process id */
+    sigset_t mask;
+    
+    /* Block SIGCHLD to prevent race. IDK if it should be here or somewhere else */
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGCHLD);
+    sigprocmask(SIG_BLOCK, &mask, NULL); /* Block SIGCHLD. Will get unblocked once child added to jobs */
 
     strcpy(buf, cmdline);
     bg = parseline(buf, argv); 
     if (argv[0] == NULL) return; /* Ignore empty lines */
     if (!builtin_cmd(argv)) 
     { 
-        if ((pid = fork()) == 0) 
-        { /* Child runs user job */ 
+        if ((pid = fork()) == 0) /* Child runs user job */
+        {
+            sigprocmask(SIG_UNBLOCK, &mask, NULL); /* Unblock SIGCHLD */
             if (execve(argv[0], argv, environ) < 0) 
             { 
                 printf("%s: Command not found.\n", argv[0]);
@@ -187,9 +193,11 @@ void eval(char *cmdline)
         }
         /* Parent waits for foreground job to terminate */
         if (!bg) 
-        { 
-            int status;
-            if (waitpid(pid, &status, 0) < 0) unix_error("waitfg: waitpid error");
+        {
+            addjob(jobs, pid, FG, cmdline);
+            sigprocmask(SIG_UNBLOCK, &mask, NULL); /* Unblock SIGCHLD */
+//            int status;
+//            if (waitpid(pid, &status, 0) < 0) unix_error("waitfg: waitpid error");
         }
         else {
             addjob(jobs, pid, BG, cmdline);
@@ -198,7 +206,6 @@ void eval(char *cmdline)
             
         }
     }
-    return; 
 }
 
 /* 
@@ -314,7 +321,12 @@ void waitfg(pid_t pid)
 /* The pic you sent Jeremy */
 void sigchld_handler(int sig) 
 {
-    return;
+    printf("sigchld handler executing\n");
+    pid_t pid;
+    while ((pid = waitpid(-1, NULL, 0)) > 0) /* Reap a zombie child */
+        deletejob(jobs, pid); /* Delete the child from the job list */
+    if (errno != ECHILD)
+        unix_error("waitpid error");
 }
 
 /* 
@@ -326,6 +338,10 @@ void sigchld_handler(int sig)
 /* This and sigstp f(x)s are the same code. See spec for what to do (hints section) */
 void sigint_handler(int sig) 
 {
+    printf("Caught SIGINT\n");
+    pid_t pgid = fgpid(jobs);
+    printf("pgid: %d\n", pgid);
+    printf("Kill response: %d \n", kill(-pgid,2));
     return;
 }
 
