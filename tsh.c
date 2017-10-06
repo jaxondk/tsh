@@ -293,8 +293,26 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {
-    
-    return;
+    if(strcmp(argv[0], "bg") == 0) /* bg command - send SIGCONT to a stopped bg job */
+    {
+        char * arg1 = argv[1];
+        if(arg1[0] == '%') /* use the jid */
+        {
+            char* jid_str = arg1 + 1; /* jid_str now points to the first char after % */
+            struct job_t* job = getjobjid(jobs, atoi(jid_str));
+            kill(-(job->pid),SIGCONT);
+            job->state = BG;
+            printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
+        }
+        else /* use the pid */
+        {
+            printf("Use the pid\n");
+        }
+    }
+    else /* fg command */
+    {
+        
+    }
 }
 
 /* 
