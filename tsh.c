@@ -184,6 +184,7 @@ void eval(char *cmdline)
     { 
         if ((pid = fork()) == 0) /* Child runs user job */
         {
+            setpgid(0, 0);
             sigprocmask(SIG_UNBLOCK, &mask, NULL); /* Unblock SIGCHLD */
             if (execve(argv[0], argv, environ) < 0) 
             { 
@@ -196,8 +197,7 @@ void eval(char *cmdline)
         {
             addjob(jobs, pid, FG, cmdline);
             sigprocmask(SIG_UNBLOCK, &mask, NULL); /* Unblock SIGCHLD */
-//            int status;
-//            if (waitpid(pid, &status, 0) < 0) unix_error("waitfg: waitpid error");
+            waitfg(pid);
         }
         else {
             addjob(jobs, pid, BG, cmdline);
@@ -303,6 +303,8 @@ void do_bgfg(char **argv)
 /* see spec */
 void waitfg(pid_t pid)
 {
+    struct job_t *fgjob = getjobpid(jobs, pid);
+    while(fgjob->state == FG) sleep(1);
     return;
 }
 
@@ -321,10 +323,22 @@ void waitfg(pid_t pid)
 /* The pic you sent Jeremy */
 void sigchld_handler(int sig) 
 {
-    printf("sigchld handler executing\n");
+    int status;
     pid_t pid;
-    while ((pid = waitpid(-1, NULL, 0)) > 0) /* Reap a zombie child */
-        deletejob(jobs, pid); /* Delete the child from the job list */
+    while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) != 0) /* Reap a zombie child */
+    {
+        if(WIFEXITED(status)) {
+            deletejob(jobs, pid); /* Delete the child from the job list */
+            return;
+        }
+        if(WIFSIGNALED(status))
+        {
+            int jid = pid2jid(pid);
+            printf("Job [%d] (%d) terminated by signal 2\n", jid, pid);
+            deletejob(jobs, pid);
+            return;
+        }
+    }
     if (errno != ECHILD)
         unix_error("waitpid error");
 }
@@ -338,11 +352,8 @@ void sigchld_handler(int sig)
 /* This and sigstp f(x)s are the same code. See spec for what to do (hints section) */
 void sigint_handler(int sig) 
 {
-    printf("Caught SIGINT\n");
     pid_t pgid = fgpid(jobs);
-    printf("pgid: %d\n", pgid);
-    printf("Kill response: %d \n", kill(-pgid,2));
-    return;
+    kill(-pgid,SIGINT);
 }
 
 /*
