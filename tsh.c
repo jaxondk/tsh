@@ -162,8 +162,6 @@ int main(int argc, char **argv)
  * background children don't receive SIGINT (SIGTSTP) from the kernel
  * when we type ctrl-c (ctrl-z) at the keyboard.  
 */
-
-/* Combined 2 slides - eval slide and blocking code from textbook slide */ 
 void eval(char *cmdline) 
 {
     char *argv[MAXARGS]; /* Argument list execve() */ 
@@ -185,7 +183,7 @@ void eval(char *cmdline)
         if ((pid = fork()) == 0) /* Child runs user job */
         {
             setpgid(0, 0);
-            sigprocmask(SIG_UNBLOCK, &mask, NULL); /* Unblock SIGCHLD */
+            sigprocmask(SIG_UNBLOCK, &mask, NULL); // Unblock SIGCHLD for child
             if (execve(argv[0], argv, environ) < 0) 
             { 
                 printf("%s: Command not found.\n", argv[0]);
@@ -196,16 +194,18 @@ void eval(char *cmdline)
         if (!bg) 
         {
             addjob(jobs, pid, FG, cmdline);
-            sigprocmask(SIG_UNBLOCK, &mask, NULL); /* Unblock SIGCHLD */
+            sigprocmask(SIG_UNBLOCK, &mask, NULL); // Unblock SIGCHLD in parent once job added
             waitfg(pid);
         }
         else {
             addjob(jobs, pid, BG, cmdline);
+            sigprocmask(SIG_UNBLOCK, &mask, NULL); // Unblock SIGCHLD in parent once job added
             int jid = (nextjid == 0) ? MAXJID : nextjid - 1;
             printf("[%d] (%d) %s", jid, pid, cmdline); 
             
         }
     }
+    return;
 }
 
 /* 
@@ -293,26 +293,34 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {
-    if(strcmp(argv[0], "bg") == 0) /* bg command - send SIGCONT to a stopped bg job */
+    //get job for process:
+    char * arg1 = argv[1];
+    struct job_t* job;
+    if(arg1[0] == '%') // get the job using jid
     {
-        char * arg1 = argv[1];
-        if(arg1[0] == '%') /* use the jid */
-        {
-            char* jid_str = arg1 + 1; /* jid_str now points to the first char after % */
-            struct job_t* job = getjobjid(jobs, atoi(jid_str));
-            kill(-(job->pid),SIGCONT);
-            job->state = BG;
-            printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
-        }
-        else /* use the pid */
-        {
-            printf("Use the pid\n");
-        }
-    }
-    else /* fg command */
-    {
+        char* jid_str = arg1 + 1; // jid_str now points to the first char after %
+        job = getjobjid(jobs, atoi(jid_str));
         
     }
+    else // get the job using the pid
+    {
+        job = getjobpid(jobs, atoi(arg1));
+    }
+    
+    if(strcmp(argv[0], "bg") == 0) // bg command - set job state to BG
+    {
+        job->state = BG;
+        printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
+    }
+    else // fg command - set job state to FG
+    {
+        job->state = FG;
+    }
+    
+    kill(-(job->pid),SIGCONT); //resume process with new state
+    printf("job->pid: %d\n", job->pid);
+    if(job->state == FG) waitfg(job->pid);
+    return;
 }
 
 /* 
