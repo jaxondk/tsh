@@ -6,4 +6,4 @@ my*
 *.pl
 *ref*
 tsh
-tshj.c
+.DS_Store

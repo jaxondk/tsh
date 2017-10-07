@@ -169,7 +169,7 @@ void eval(char *cmdline)
     int bg; /* Should the job run in bg or fg? */
     pid_t pid; /* Process id */
     
-    /* Block SIGCHLD to prevent race. IDK if it should be here or somewhere else */
+    /* Block SIGCHLD to prevent race */
     sigset_t mask_all, mask_one, prev_one;
     sigfillset(&mask_all);
     sigemptyset(&mask_one);
@@ -187,7 +187,7 @@ void eval(char *cmdline)
             sigprocmask(SIG_SETMASK, &prev_one, NULL); // Unblock SIGCHLD for child
             if (execve(argv[0], argv, environ) < 0)
             {
-                printf("%s: Command not found.\n", argv[0]);
+                printf("%s: Command not found\n", argv[0]);
                 exit(0);
             }
         }
@@ -349,8 +349,6 @@ void do_bgfg(char **argv)
 /*
  * waitfg - Block until process pid is no longer the foreground process
  */
-
-/* see spec */
 void waitfg(pid_t pid)
 {
     struct job_t *fgjob = getjobpid(jobs, pid);
@@ -369,8 +367,6 @@ void waitfg(pid_t pid)
  *     available zombie children, but doesn't wait for any other
  *     currently running children to terminate.
  */
-
-/* The pic you sent Jeremy */
 void sigchld_handler(int sig)
 {
     int status;
@@ -405,8 +401,6 @@ void sigchld_handler(int sig)
  *    user types ctrl-c at the keyboard.  Catch it and send it along
  *    to the foreground job.
  */
-
-/* This and sigstp f(x)s are the same code. See spec for what to do (hints section) */
 void sigint_handler(int sig)
 {
     pid_t pgid = fgpid(jobs);
@@ -418,8 +412,6 @@ void sigint_handler(int sig)
  *     the user types ctrl-z at the keyboard. Catch it and suspend the
  *     foreground job by sending it a SIGTSTP.
  */
-
-/* Same code as sigint */
 void sigtstp_handler(int sig)
 {
     pid_t pgid = fgpid(jobs);
@@ -644,6 +636,3 @@ void sigquit_handler(int sig)
     printf("Terminating after receipt of SIGQUIT signal\n");
     exit(1);
 }
-
-
-
